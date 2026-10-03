@@ -56,5 +56,14 @@ await assert.rejects(()=>db.query('select public.wallet_add_expense($1,$2,$3,$4,
 await actor(a);
 await db.query('select public.wallet_add_shared_expense($1,$2,$3,$4,$5,$6,$7,$8)',[trip,dinner,'Dinner',47000,a,'2026-10-02','[]','everyone']);
 assert.equal((await db.query('select public.wallet_group($1) as data',[trip])).rows[0].data.expenses.length,2);
-console.log('PASS: migration re-splits legacy expenses; late joining re-splits every group expense; 470/600 example leaves 65; selected splits rejected; old write endpoint blocked; retry after joining deduplicated.');
+const hardening=await readFile(new URL('../supabase/migrations/20261004000100_security_hardening.sql',import.meta.url),'utf8');await db.exec('reset role');await db.exec(hardening);
+const wrapper=(await db.query("select prosecdef,proconfig from pg_proc where oid='public.wallet_group(uuid)'::regprocedure")).rows[0];
+assert.equal(wrapper.prosecdef,false);assert.ok(wrapper.proconfig.includes('search_path=""'));
+await actor(a);
+await assert.rejects(()=>db.query('select * from wallet_private.groups'),/permission denied/);
+const guarded=(await db.query('select public.wallet_group($1) as data',[trip])).rows[0].data;
+assert.equal(guarded.expenses.length,2);
+await actor(c);await assert.rejects(()=>db.query('select public.wallet_group($1)',[trip]),/access/);
+await db.exec('reset role;set role anon');await assert.rejects(()=>db.query('select public.wallet_dashboard()'),/permission denied/);
+console.log('PASS: migration re-splits legacy expenses; late joining re-splits every group expense; 470/600 example leaves 65; selected splits rejected; old write endpoint blocked; retry after joining deduplicated; hardening wrappers remain invoker-only with direct table and anonymous access denied.');
 await db.close();
