@@ -1,0 +1,12 @@
+{
+  "expo": {
+    "name": "Wallet",
+    "slug": "wallet",
+    "scheme": "wallet",
+    "version": "0.1.0",
+    "orientation": "default",
+    "userInterfaceStyle": "light",
+    "plugins": ["expo-router"],
+    "web": { "bundler": "metro", "output": "single", "name": "Wallet" }
+  }
+}
