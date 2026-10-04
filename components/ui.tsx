@@ -1,5 +1,5 @@
-import { ReactNode } from 'react';
-import { ActivityIndicator, Pressable, ScrollView, StyleSheet, Text, TextInput, View, useWindowDimensions } from 'react-native';
+import { ReactNode, useEffect, useRef, useState } from 'react';
+import { AccessibilityInfo, ActivityIndicator, Animated, Easing, Pressable, ScrollView, StyleSheet, Text, TextInput, View, useWindowDimensions } from 'react-native';
 
 export const colors = { ink: '#182E29', muted: '#5B7068', green: '#205A47', pale: '#EAF1EB', paper: '#F7F8F2', line: '#DCE3DB' };
 export function Button({ title, onPress, busy = false, secondary = false }: { title: string; onPress: () => void; busy?: boolean; secondary?: boolean }) {
@@ -8,7 +8,9 @@ export function Button({ title, onPress, busy = false, secondary = false }: { ti
   </Pressable>;
 }
 export function Field({ label, value, onChangeText, password = false, email = false, newPassword = false, onSubmit }: { label: string; value: string; onChangeText: (value: string) => void; password?: boolean; email?: boolean; newPassword?: boolean; onSubmit?: () => void }) {
-  return <View style={{ gap: 8 }}><Text style={styles.label}>{label}</Text><TextInput accessibilityLabel={label} value={value} onChangeText={onChangeText} secureTextEntry={password} autoCapitalize="none" autoCorrect={false} keyboardType={email ? 'email-address' : 'default'} autoComplete={email ? 'email' : password ? newPassword ? 'new-password' : 'current-password' : 'name'} onSubmitEditing={onSubmit} style={styles.input} /></View>;
+  const [passwordVisible, setPasswordVisible] = useState(false);
+  const input = <TextInput accessibilityLabel={label} value={value} onChangeText={onChangeText} secureTextEntry={password && !passwordVisible} autoCapitalize="none" autoCorrect={false} keyboardType={email ? 'email-address' : 'default'} autoComplete={email ? 'email' : password ? newPassword ? 'new-password' : 'current-password' : 'name'} onSubmitEditing={onSubmit} style={password ? styles.passwordTextInput : styles.input} />;
+  return <View style={{ gap: 8 }}><Text style={styles.label}>{label}</Text>{password ? <View style={styles.passwordInput}>{input}<Pressable accessibilityRole="button" accessibilityLabel={passwordVisible ? 'Hide password' : 'Show password'} accessibilityState={{ selected: passwordVisible }} hitSlop={6} onPress={() => setPasswordVisible(visible => !visible)} style={({ pressed }) => [styles.revealButton, pressed && { opacity: .65 }]}><View style={styles.eyeShape}><View style={styles.eyePupil}/></View>{passwordVisible && <View pointerEvents="none" style={styles.eyeSlash}/>}</Pressable></View> : input}</View>;
 }
 export function Notice({ text, error = false }: { text: string; error?: boolean }) {
   return <Text accessibilityRole={error ? 'alert' : undefined} accessibilityLiveRegion="polite" style={[styles.notice, error && { color: '#8B2929', backgroundColor: '#FFF0EC' }]}>{text}</Text>;
@@ -21,20 +23,70 @@ export function Shell({ children }: { children: ReactNode }) {
       <View style={[styles.story, wide && { flex: 1 }]}>
         <Text style={styles.eyebrow}>SHARE THE MOMENTS</Text><Text style={[styles.headline, !wide && { fontSize: 38, lineHeight: 44 }]}>Together is better.{'\n'}Splitting is simpler.</Text>
         <Text style={styles.description}>Weekend trips. Shared homes. Dinner with friends. Keep track of expenses, so you can get back to the good stuff.</Text>
-        {wide && <View style={styles.illustration}><Text style={{ color: colors.muted, fontSize: 13, letterSpacing: 1 }}>LESS MATH. MORE MEMORIES.</Text><Text style={{ fontSize: 66, color: colors.green }}>↗  ◈  ↙</Text><Text style={{ color: colors.ink, fontSize: 18 }}>One shared place for every shared expense.</Text></View>}
+        <View style={[styles.illustration, !wide && styles.illustrationCompact]}><Text style={styles.illustrationEyebrow}>LESS MATH. MORE MEMORIES.</Text><CurrencyCoins compact={!wide}/><Text style={styles.illustrationCaption}>One shared place for every shared expense.</Text></View>
       </View>
       <View style={[styles.card, wide && { width: 440 }]}>{children}</View>
     </View><Text style={styles.footer}>Made for the people you share life with.</Text>
   </ScrollView>;
 }
+
+const currencies = [
+  { symbol: '₹', code: 'INR', face: '#E8B95D', rim: '#AA712A', ink: '#553915' },
+  { symbol: '$', code: 'USD', face: '#8CB59B', rim: '#47735A', ink: '#234834' },
+  { symbol: '€', code: 'EUR', face: '#82B9B2', rim: '#417C78', ink: '#20534F' },
+  { symbol: '£', code: 'GBP', face: '#D99A81', rim: '#9A5E4B', ink: '#603629' },
+  { symbol: '¥', code: 'JPY', face: '#9DAFD0', rim: '#5D7198', ink: '#344467' },
+];
+
+function CurrencyCoins({ compact }: { compact: boolean }) {
+  const [reduceMotion, setReduceMotion] = useState(false);
+  const movement = useRef(currencies.map(() => new Animated.Value(0))).current;
+  useEffect(() => {
+    let mounted = true;
+    void AccessibilityInfo.isReduceMotionEnabled().then(value => { if (mounted) setReduceMotion(value); }).catch(() => undefined);
+    const subscription = AccessibilityInfo.addEventListener('reduceMotionChanged', setReduceMotion);
+    return () => { mounted = false; subscription.remove(); };
+  }, []);
+  useEffect(() => {
+    if (reduceMotion) return;
+    const animations = movement.map((value, index) => Animated.loop(Animated.sequence([
+      Animated.delay(index * 130),
+      Animated.timing(value, { toValue: 1, duration: 2100 + index * 120, easing: Easing.inOut(Easing.sin), useNativeDriver: true }),
+      Animated.timing(value, { toValue: 0, duration: 2100 + index * 120, easing: Easing.inOut(Easing.sin), useNativeDriver: true }),
+    ])));
+    animations.forEach(animation => animation.start());
+    return () => animations.forEach(animation => animation.stop());
+  }, [movement, reduceMotion]);
+  return <View style={[styles.coinStage, compact && styles.coinStageCompact]}>
+    {currencies.map((currency, index) => {
+      const motionStyle = reduceMotion ? undefined : { transform: [
+        { perspective: 600 },
+        { translateY: movement[index].interpolate({ inputRange: [0, 1], outputRange: [4, -4] }) },
+        { rotateY: movement[index].interpolate({ inputRange: [0, 1], outputRange: ['-12deg', '12deg'] }) },
+        { rotateZ: movement[index].interpolate({ inputRange: [0, 1], outputRange: ['-2deg', '2deg'] }) },
+      ] };
+      return <Animated.View key={currency.code} accessible={false} accessibilityElementsHidden importantForAccessibility="no-hide-descendants" style={[styles.coinUnit, compact && styles.coinUnitCompact, motionStyle]}>
+        <View style={[styles.coinRim, compact && styles.coinRimCompact, { backgroundColor: currency.rim, borderColor: currency.rim }]}>
+          <View style={[styles.coinFace, { backgroundColor: currency.face }]}>
+            <View pointerEvents="none" style={styles.coinGlint}/>
+            <Text style={[styles.coinSymbol, compact && styles.coinSymbolCompact, { color: currency.ink }]}>{currency.symbol}</Text>
+          </View>
+        </View>
+        <Text style={styles.coinCode}>{currency.code}</Text>
+      </Animated.View>;
+    })}
+  </View>;
+}
+
 export const styles = StyleSheet.create({
   top: { paddingHorizontal: 28, paddingVertical: 24, borderBottomWidth: 1, borderColor: colors.line, flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', flexWrap: 'wrap', gap: 12 },
   logo: { fontSize: 29, fontWeight: '700', color: colors.green, letterSpacing: -1 }, tag: { fontSize: 10, letterSpacing: 1.6, color: colors.muted },
   body: { padding: 24, paddingVertical: 40, width: '100%', maxWidth: 1180, alignSelf: 'center', flex: 1, gap: 32 }, story: { gap: 20 },
   eyebrow: { color: colors.green, letterSpacing: 2, fontSize: 11, fontWeight: '700' }, headline: { fontSize: 54, lineHeight: 61, fontWeight: '700', color: colors.ink, letterSpacing: -2 },
-  description: { fontSize: 17, lineHeight: 27, color: colors.muted, maxWidth: 440 }, illustration: { marginTop: 16, padding: 28, borderRadius: 18, backgroundColor: '#E8EEDC', gap: 16 },
+  description: { fontSize: 17, lineHeight: 27, color: colors.muted, maxWidth: 440 }, illustration: { marginTop: 16, padding: 26, borderRadius: 18, backgroundColor: '#E8EEDC', gap: 12, overflow: 'hidden' }, illustrationCompact: { padding: 18, marginTop: 4, gap: 8 }, illustrationEyebrow: { color: colors.muted, fontSize: 12, letterSpacing: 1.2, fontWeight: '600' }, illustrationCaption: { color: colors.ink, fontSize: 16, lineHeight: 23, fontWeight: '500' },
+  coinStage: { height: 92, flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', paddingHorizontal: 6 }, coinStageCompact: { height: 72, paddingHorizontal: 0 }, coinUnit: { width: 64, alignItems: 'center', gap: 4 }, coinUnitCompact: { width: 46 }, coinRim: { width: 54, height: 54, padding: 3, borderRadius: 27, borderWidth: 1.5, alignItems: 'center', justifyContent: 'center', shadowColor: '#425545', shadowOpacity: .2, shadowRadius: 7, shadowOffset: { width: 0, height: 4 }, elevation: 4 }, coinRimCompact: { width: 42, height: 42, padding: 2, borderRadius: 21 }, coinFace: { width: '100%', height: '100%', borderRadius: 30, borderWidth: 1, borderColor: 'rgba(255,255,255,0.58)', alignItems: 'center', justifyContent: 'center', overflow: 'hidden' }, coinGlint: { position: 'absolute', width: 17, height: 6, left: 6, top: 5, borderRadius: 6, backgroundColor: 'rgba(255,255,255,0.5)', transform: [{ rotate: '-38deg' }] }, coinSymbol: { fontSize: 26, fontWeight: '700' }, coinSymbolCompact: { fontSize: 20 }, coinCode: { color: colors.muted, fontSize: 9, fontWeight: '700', letterSpacing: .7 },
   card: { backgroundColor: '#fff', borderWidth: 1, borderColor: colors.line, borderRadius: 20, padding: 28, gap: 20 }, title: { fontSize: 28, fontWeight: '700', color: colors.ink, letterSpacing: -.7 }, subtitle: { fontSize: 15, lineHeight: 23, color: colors.muted },
-  label: { fontSize: 13, fontWeight: '600', color: colors.ink }, input: { minHeight: 50, borderWidth: 1, borderColor: '#B7C5BD', borderRadius: 10, paddingHorizontal: 14, fontSize: 16, color: colors.ink, backgroundColor: '#FCFDFB' },
+  label: { fontSize: 13, fontWeight: '600', color: colors.ink }, input: { minHeight: 50, borderWidth: 1, borderColor: '#B7C5BD', borderRadius: 10, paddingHorizontal: 14, fontSize: 16, color: colors.ink, backgroundColor: '#FCFDFB' }, passwordInput: { minHeight: 50, borderWidth: 1, borderColor: '#B7C5BD', borderRadius: 10, paddingLeft: 14, paddingRight: 4, flexDirection: 'row', alignItems: 'center', backgroundColor: '#FCFDFB' }, passwordTextInput: { flex: 1, minWidth: 0, minHeight: 48, paddingVertical: 10, fontSize: 16, color: colors.ink }, revealButton: { width: 44, height: 44, alignItems: 'center', justifyContent: 'center', borderRadius: 8 }, eyeShape: { width: 19, height: 13, borderWidth: 1.7, borderColor: colors.muted, borderRadius: 10, alignItems: 'center', justifyContent: 'center' }, eyePupil: { width: 5, height: 5, borderRadius: 3, backgroundColor: colors.green }, eyeSlash: { position: 'absolute', height: 1.7, width: 25, borderRadius: 2, backgroundColor: colors.muted, transform: [{ rotate: '-38deg' }] },
   button: { minHeight: 50, borderRadius: 10, backgroundColor: colors.green, alignItems: 'center', justifyContent: 'center', paddingHorizontal: 18 }, buttonText: { color: '#fff', fontSize: 15, fontWeight: '600' }, secondary: { backgroundColor: colors.pale },
   notice: { backgroundColor: colors.pale, color: colors.green, padding: 14, borderRadius: 10, fontSize: 14, lineHeight: 21 }, link: { color: colors.green, fontSize: 14, fontWeight: '600', paddingVertical: 8 }, footer: { textAlign: 'center', color: colors.muted, fontSize: 12, padding: 24 },
 });
